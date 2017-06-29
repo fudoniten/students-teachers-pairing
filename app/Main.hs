@@ -40,23 +40,72 @@ generatePairingsInternal student = do
   forM subjects $ \subject -> do
     let tutors = getTutorsForSubject subject
     mTutor <- getAppropriateTutor tutors student subject
+    --
+    liftIO debug_
+    --
     return (mTutor, student, subject)
+   where
+      str :: Tutor -> Load -> String
+      str tut load = "Tutor: " + (show tut) ++ ", " ++ "Load: " ++ (show load)
 
--- ToDO: Change this
+      debug_ :: IO ()
+      debug_  = do
+         mapM_ (\(tut, load) -> putStrLn (str tut load)) $ M.toList (getMap state)
+
 type Load = Int
-data TutorLoad = TutorLoad { getMap ::  M.Map Tutor Load }
+data TutorLoad = TutorLoad { getMap :: M.Map Tutor Load }
 
 getAppropriateTutor :: [Tutor] -> Student -> Subject -> State TutorLoad (Maybe Tutor)
 getAppropriateTutor [] _ _ = return Nothing
 getAppropriateTutor tutors _ subject = do
   tutorLoad <- get
-  let tutorWithMinimumLoad = getTutorWithMinimumLoad
-  let newMap = M.adjust (\load -> load + 1) tutorWithMinimumLoad (getMap tutorLoad)
-  put (TutorLoad newMap)
+  tutorWithMinimumLoad <- getTutorWithMinimumLoad tutors
   return $ Just tutorWithMinimumLoad
 
   where
-    getTutorWithMinimumLoad = foldl min (tutors !! 0) tutors
+    getTutorWithMinimumLoad :: [Tutor] -> State TutorLoad Tutor
+    getTutorWithMinimumLoad tutors = do
+      tutorLoad <- get
+      return $ foldl (\t1 t2 ->
+               let (tut, _) = runState (getMin t1 t2) tutorLoad
+               in tut) (tutors !! 0) tutors
+
+    getMin :: Tutor -> Tutor -> State TutorLoad Tutor
+    getMin t1 t2 = do
+      load <- get
+      let map = getMap load
+      let mt1Load = M.lookup t1 map
+      let mt2Load = M.lookup t2 map
+      comp (t1, mt1Load) (t2, mt2Load)
+
+    comp :: (Tutor, Maybe Load) -> (Tutor, Maybe Load) -> State TutorLoad Tutor
+    comp (t1, Nothing) (t2, Nothing) = do
+      load <- get
+      let map = getMap load
+      let map' = M.insert t1 1 map -- This one is being used for the first time, mark it as so
+      let map'' = M.insert t2 0 map'
+      return t1
+    comp (t1, Nothing) (t2, Just t2Load) = do
+      load <- get
+      let map = getMap load
+      let map' = M.insert t1 1 map
+      return t1
+    comp (t1, Just t1Load) (t2, Nothing) = do
+      load <- get
+      let map = getMap load
+      let map' = M.insert t2 1 map
+      return t2
+    comp (t1, Just t1Load) (t2, Just t2Load) = do
+      load <- get
+      let map = getMap load
+      case t1Load < t2Load of
+        True -> do
+          let map' = M.insert t1 (t1Load + 1) map
+          return t1
+        False -> do
+          let map' = M.insert t2 (t2Load + 1) map
+          return t2
+
 
 displayPairings :: [(Tutor, Student, Subject)] -> IO ()
 displayPairings pairings = do
@@ -69,3 +118,4 @@ main = do
   putStrLn "Here are the pairings: "
   let pairings = generatePairings getStudents
   displayPairings pairings
+  putStrLn "Display "
