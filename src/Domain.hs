@@ -1,41 +1,73 @@
 module Domain (
   Student(..),
   Tutor(..),
+  Subject(..),
   getStudents,
-  getTutors,
+  getTutorsForSubject,
   getStudentPreferences
 ) where
 
-import Data.Map (Map)
+import qualified Data.Map as M
 
 
 -- Student related logic
 type StudentId = Int
 type StudentName  = String
-data Student = Student StudentId StudentName deriving Show
+data Student = Student StudentId StudentName
+
+instance Show Student where
+  show (Student _ name) = name
 
 getStudents :: [Student]
 getStudents = map (\s -> Student (fst s) (snd s)) students_raw
 
 getStudentPreferences :: Student -> [Subject]
-getStudentPreferences student = [Subject 1 "S"]
+getStudentPreferences (Student studentId _) =
+  [subject | Just subject <- getSubjects (lookup studentId student_to_subjects_raw)]
+  where
+    getSubjects :: Maybe [SubjectId] -> [Maybe Subject]
+    getSubjects msubjectId = case msubjectId of
+                               Just ids -> map (\id ->
+                                                  case lookup id subjects_raw of
+                                                    Just subjectName -> Just (Subject id subjectName)
+                                                    Nothing -> Nothing
+                                               ) ids
+                               Nothing -> []
+
 
 
 -- Tutor related logic
 type TutorId = Int
 type TutorName = String
-data Tutor = Tutor TutorId TutorName deriving Show
+data Tutor = Tutor TutorId TutorName
 
-getTutors :: [Tutor]
-getTutors = []
+instance Ord Tutor where
+  compare (Tutor id1 _) (Tutor id2 _) = id1 `compare` id2
 
+instance Eq Tutor where
+ (Tutor id1 _) == (Tutor id2 _) = id1 == id2
+
+instance Show Tutor where
+  show (Tutor _ name) = name
+
+
+getTutorsForSubject :: Subject -> [Tutor]
+getTutorsForSubject (Subject subjectId _) =
+  [tutor | Just tutor <- getTutors (lookup subjectId subject_to_tutors_raw)]
+  where
+    getTutors :: Maybe [TutorId] -> [Maybe Tutor]
+    getTutors mtutorId = case mtutorId of
+                           Just ids -> map (\id ->
+                                              case lookup id tutors_raw of
+                                                Just tutorName -> Just (Tutor id tutorName)
+                                                Nothing -> Nothing
+                                           ) ids
+                           Nothing -> []
 
 -- Subject related logic
 type SubjectId = Int
 type SubjectName = String
 data Subject = Subject SubjectId SubjectName deriving Show
-
-
 
 -- Raw Student Data
 students_raw = [(1, "Annie"), (2, "Oskar"), (3, "Olle"), (4, "Ingrid"),
