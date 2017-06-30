@@ -2,11 +2,29 @@ module Main where
 
 import Domain
 import qualified Data.Map as M
+import qualified Data.Set as S
 import Control.Monad.State
 import Control.Monad (forM)
+import GHC.IO.Unsafe (unsafePerformIO)
+import Debug.Trace (trace, traceShow)
+
 
 -- Given a list of students, generate a pairing of the form (Tutor, Student)
--- When there is the possibility that a Student can be paired to multiple tutors,
+
+-- Note: Our definition of 'Most Optimal':
+
+-- We strive to make sure that all teachers have approximately the same load.
+-- So, when there is the possibility that a Student can be paired to multiple tutors,
+-- prioritize the teacher who is the least busy right now, i.e: with the least amount of students.
+-- We do that because we want to shoot for equal workload and work/life balance for our personel, leading to a better handling of the clients and happier employees.
+
+-- We use a greedy approach to solving this problem, and thus we end up with an approximate optimization. If correctness is absolutely necessary, we would make use of 'Backtracking', which would take more time, as it would explore all possibilities.
+
+-- ToDO's: (these are things to be done in the future)
+-- * Remove duplicates from the list
+-- * Remove entries where there's no tutor available to handle a subject
+-- * Fix the issue with prioritization not working perfectly
+
 generatePairings :: [Student] -> [(Tutor, Student, Subject)]
 generatePairings students =
   let result = concat . (flip map) students $ \student ->
@@ -14,47 +32,31 @@ generatePairings students =
         in xs
   in [(tut, stu, subj) | (Just tut, stu, subj) <- result]
 
-  -- ToDO: Clarify comment
-  -- Find the 'most optimal tutor' for each subject the student is interested in
-  -- We'll strive to make sure that tutors have approximately the same load
-  --(flip map) (getStudentPreferences student) $ \subject ->
-  --  let tutors = getTutorsForSubject subject
-  --      (mTutor, _) = runState (getAppropriateTutor tutors student subject) tutorLoad
-  --  in (mTutor, student, subject)
-
-
-  --(flip map) (getStudentPreferences student) $ \subject ->
-  --  let tutors = getTutorsForSubject subject
-  --      (tut, _) = runState (getAppropriateTutor tutors student subject)
-  --  in case tut of Just t -> Just (t, student, subject)
-  --                 Nothing -> Nothing
-
-
- -- ToDO: Remove duplicate pairings
- -- ToDO: Handle case when no teacher can handle a subject desired/preferred by the student
 
 generatePairingsInternal :: Student -> State TutorLoad [(Maybe Tutor, Student, Subject)]
 generatePairingsInternal student = do
-  state <- get
+  tutorLoad <- get
   let subjects = getStudentPreferences student
   forM subjects $ \subject -> do
     let tutors = getTutorsForSubject subject
     mTutor <- getAppropriateTutor tutors student subject
-    --
-    liftIO debug_
-    --
     return (mTutor, student, subject)
    where
       str :: Tutor -> Load -> String
-      str tut load = "Tutor: " + (show tut) ++ ", " ++ "Load: " ++ (show load)
+      str tut load = "Tutor: " ++ (show tut) ++ ", " ++ "Load: " ++ (show load)
 
-      debug_ :: IO ()
-      debug_  = do
-         mapM_ (\(tut, load) -> putStrLn (str tut load)) $ M.toList (getMap state)
+      debug_ :: TutorLoad -> IO ()
+      debug_ tutorLoad  = do
+         mapM_ (\(tut, load) -> putStrLn (str tut load)) $ M.toList (getMap tutorLoad)
 
 type Load = Int
 data TutorLoad = TutorLoad { getMap :: M.Map Tutor Load }
 
+-- For debugging purposes
+instance Show TutorLoad where
+  show tl = concat $ map (\(tut, load) -> (str tut load)) $ M.toList (getMap tl)
+            where
+              str tutor load = "Tutor: " ++ (show tutor) ++ ", " ++ "Load: " ++ (show load)
 getAppropriateTutor :: [Tutor] -> Student -> Subject -> State TutorLoad (Maybe Tutor)
 getAppropriateTutor [] _ _ = return Nothing
 getAppropriateTutor tutors _ subject = do
@@ -118,4 +120,3 @@ main = do
   putStrLn "Here are the pairings: "
   let pairings = generatePairings getStudents
   displayPairings pairings
-  putStrLn "Display "
