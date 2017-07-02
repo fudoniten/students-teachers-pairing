@@ -39,12 +39,12 @@ generatePairingsInternal student = do
   let subjects = getStudentPreferences student
   forM subjects $ \subject -> do
     let tutors = getTutorsForSubject subject
+    -- let (mTutor, _) = runState (getAppropriateTutor tutors student subject) tutorLoad
     mTutor <- getAppropriateTutor tutors student subject
     return (mTutor, student, subject)
    where
       str :: Tutor -> Load -> String
       str tut load = "Tutor: " ++ (show tut) ++ ", " ++ "Load: " ++ (show load)
-
       debug_ :: TutorLoad -> IO ()
       debug_ tutorLoad  = do
          mapM_ (\(tut, load) -> putStrLn (str tut load)) $ M.toList (getMap tutorLoad)
@@ -56,58 +56,27 @@ data TutorLoad = TutorLoad { getMap :: M.Map Tutor Load }
 instance Show TutorLoad where
   show tl = concat $ map (\(tut, load) -> (str tut load)) $ M.toList (getMap tl)
             where
-              str tutor load = "Tutor: " ++ (show tutor) ++ ", " ++ "Load: " ++ (show load)
-getAppropriateTutor :: [Tutor] -> Student -> Subject -> State TutorLoad (Maybe Tutor)
+              str tutor load = "Tutor: " ++ (show tutor) ++ ", " ++ "Load: " ++ (show load) 
+getAppropriateTutor :: [Tutor] -> Student -> Subject -> State TutorLoad (Maybe Tutor)        
 getAppropriateTutor [] _ _ = return Nothing
 getAppropriateTutor tutors _ subject = do
-  tutorLoad <- get
   tutorWithMinimumLoad <- getTutorWithMinimumLoad tutors
   return $ Just tutorWithMinimumLoad
 
   where
     getTutorWithMinimumLoad :: [Tutor] -> State TutorLoad Tutor
     getTutorWithMinimumLoad tutors = do
-      tutorLoad <- get
-      return $ foldl (\t1 t2 ->
-               let (tut, _) = runState (getMin t1 t2) tutorLoad
-               in tut) (tutors !! 0) tutors
+      tutorLoadM <- get
+      let tutorLoad = getMap tutorLoadM
+      return $ foldl (\t1 t2 -> getMin t1 (M.lookup t1 tutorLoad) t2 (M.lookup t2 tutorLoad)) (tutors !! 0) tutors
+        
 
-    getMin :: Tutor -> Tutor -> State TutorLoad Tutor
-    getMin t1 t2 = do
-      load <- get
-      let map = getMap load
-      let mt1Load = M.lookup t1 map
-      let mt2Load = M.lookup t2 map
-      comp (t1, mt1Load) (t2, mt2Load)
-
-    comp :: (Tutor, Maybe Load) -> (Tutor, Maybe Load) -> State TutorLoad Tutor
-    comp (t1, Nothing) (t2, Nothing) = do
-      load <- get
-      let map = getMap load
-      let map' = M.insert t1 1 map -- This one is being used for the first time, mark it as so
-      let map'' = M.insert t2 0 map'
-      return t1
-    comp (t1, Nothing) (t2, Just t2Load) = do
-      load <- get
-      let map = getMap load
-      let map' = M.insert t1 1 map
-      return t1
-    comp (t1, Just t1Load) (t2, Nothing) = do
-      load <- get
-      let map = getMap load
-      let map' = M.insert t2 1 map
-      return t2
-    comp (t1, Just t1Load) (t2, Just t2Load) = do
-      load <- get
-      let map = getMap load
-      case t1Load < t2Load of
-        True -> do
-          let map' = M.insert t1 (t1Load + 1) map
-          return t1
-        False -> do
-          let map' = M.insert t2 (t2Load + 1) map
-          return t2
-
+    getMin :: Tutor -> Maybe Load -> Tutor -> Maybe Load -> Tutor
+    getMin t1 t1load t2 t2load = case (t1load, t2load) of
+      (Nothing, Nothing) -> t1
+      (Just _, Nothing) -> t2
+      (Nothing, Just _) -> t1
+      (Just t1cost, Just t2cost) -> if (t1cost > t2cost) then t2 else t1
 
 displayPairings :: [(Tutor, Student, Subject)] -> IO ()
 displayPairings pairings = do
